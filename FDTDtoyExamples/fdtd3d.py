@@ -103,22 +103,33 @@ class YeeGrid:
                                     + dt /(eps * dx) * ( self.fldHy[idxX, idxY, idxZ] - self.fldHy[idxX-1, idxY, idxZ]  );
 
 class UnifiedYeeGrid:
-        def __init__(self, Nx, Ny, Nz):
+        def __init__(self, Nx, Ny, Nz, pmlNx=0, pmlNy=0, pmlNz=0, dx=1.0, dy=1.0, dz=1.0):
                 '''
                 Constructor. Builds a grid of Nx x Ny x Nz
                 Yee cells.
+                with a PML boundary on each of the 6 faces of the domain (halo grid).
+
                 '''
                 self.Nx = Nx;
                 self.Ny = Ny;
                 self.Nz = Nz;
+                self.pmlNx = pmlNx
+                self.pmlNy = pmlNy
+                slef.pmlNz = pmlNz;
                 # define a virtual grid, which extends beyond the actual limits
-                self.Nx_virt = Nx+1
-                self.Ny_virt = Ny+1
-                self.Nz_virt = Nz+1
+                self.Nx_virt = Nx+1 + 2*pmlNx
+                self.Ny_virt = Ny+1 + 2*pmlNy
+                self.Nz_virt = Nz+1 + 2*pmlNz
                 #create the grids
                 self.fldE = np.zeros( (3, self.Nx_virt, self.Ny_virt, self.Nz_virt) )
                 self.fldH = np.zeros( (3, self.Nx_virt, self.Ny_virt, self.Nz_virt) )
-                # Define physical positions for the fields
+                # Define the coordinates of the (0,0,0) cell
+                # implicitly we assme that the box extends in z direction with its xy-face
+                # being located at z=0
+                self.originCellCoordinates = (-dx * Nx/2, -dy * Ny / 2,0.)
+                # Create the auxiliary arrays to store the PML constants
+
+
         def Ex(self, xIdx, yIdx, zIdx):
                 return self.fldE[0, xIdx,yIdx,zIdx]
         def Ey(self, xIdx, yIdx, zIdx):
@@ -135,6 +146,13 @@ class UnifiedYeeGrid:
                 self.fldE[0, :-1,1:-1,1:-1] = np.random.randn(self.Nx, self.Ny - 1, self.Nz - 1)
                 self.fldE[1, 1:-1,:-1,1:-1] = np.random.randn(self.Nx - 1, self.Ny, self.Nz - 1)
                 self.fldE[2, 1:-1,1:-1,:-1] = np.random.randn(self.Nx - 1, self.Ny - 1, self.Nz)
+        def setGridPositions(x0:float, y0:float, z0:float):
+                '''
+                This function is used to define the position of the (0,0,0) cell in a global coordinate
+                system. From this the coordinates of all cells can be determined
+                '''
+                self.originCellCoordinates(x0, y0, z0);
+                return None;
         def updateMatlabStyle(self, eps:float, mu:float, dt:float, cellDim:tuple):
             dx, dy, dz = cellDim
             self.fldH[0, :,:-1,:-1] = self.fldH[0,:,:-1,:-1] + (dt/mu)*(np.diff(self.fldE[1,:,:-1,:],axis=2)/dz - np.diff(self.fldE[2,:,:,:-1],axis=1)/dy);
