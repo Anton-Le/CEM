@@ -103,7 +103,7 @@ class YeeGrid:
                                     + dt /(eps * dx) * ( self.fldHy[idxX, idxY, idxZ] - self.fldHy[idxX-1, idxY, idxZ]  );
 
 class UnifiedYeeGrid:
-        def __init__(self, Nx, Ny, Nz, pmlNx=0, pmlNy=0, pmlNz=0, dx=1.0, dy=1.0, dz=1.0):
+        def __init__(self, Nx, Ny, Nz, pmlCells=(0,0,0), cellDim=(1.0,1.0,1.0) ):
                 '''
                 Constructor. Builds a grid of Nx x Ny x Nz
                 Yee cells.
@@ -113,22 +113,24 @@ class UnifiedYeeGrid:
                 self.Nx = Nx;
                 self.Ny = Ny;
                 self.Nz = Nz;
-                self.pmlNx = pmlNx
-                self.pmlNy = pmlNy
-                slef.pmlNz = pmlNz;
                 # define a virtual grid, which extends beyond the actual limits
-                self.Nx_virt = Nx+1 + 2*pmlNx
-                self.Ny_virt = Ny+1 + 2*pmlNy
-                self.Nz_virt = Nz+1 + 2*pmlNz
+                self.pmlCells=pmlCells
+                self.Nx_virt = Nx+1 + 2*pmlCells[0]
+                self.Ny_virt = Ny+1 + 2*pmlCells[1]
+                self.Nz_virt = Nz+1 + 2*pmlCells[2]
                 #create the grids
                 self.fldE = np.zeros( (3, self.Nx_virt, self.Ny_virt, self.Nz_virt) )
                 self.fldH = np.zeros( (3, self.Nx_virt, self.Ny_virt, self.Nz_virt) )
+                # Create the separate coefficient grid for PMLs
+                self.CoeffC = np.zeros( (3, 2*pmlCells[0] + pmlCells[0] )
                 # Define the coordinates of the (0,0,0) cell
                 # implicitly we assme that the box extends in z direction with its xy-face
                 # being located at z=0
-                self.originCellCoordinates = (-dx * Nx/2, -dy * Ny / 2,0.)
+                self.dx, self.dy, self.dz = cellDim
                 # Create the auxiliary arrays to store the PML constants
-
+                self.originCellCoordinates = (-self.dx * self.Nx/2, -self.dy * self.Ny / 2,0.)
+        def setCellOrigin( x0, y0, z0  ):
+                self.originCellCoordinates = (x0, y0, z0);
 
         def Ex(self, xIdx, yIdx, zIdx):
                 return self.fldE[0, xIdx,yIdx,zIdx]
@@ -143,16 +145,33 @@ class UnifiedYeeGrid:
         def Hz(self, xIdx, yIdx, zIdx):
                 return self.fldH[2, xIdx,yIdx,zIdx]
         def initRandom(self):
-                self.fldE[0, :-1,1:-1,1:-1] = np.random.randn(self.Nx, self.Ny - 1, self.Nz - 1)
-                self.fldE[1, 1:-1,:-1,1:-1] = np.random.randn(self.Nx - 1, self.Ny, self.Nz - 1)
-                self.fldE[2, 1:-1,1:-1,:-1] = np.random.randn(self.Nx - 1, self.Ny - 1, self.Nz)
-        def setGridPositions(x0:float, y0:float, z0:float):
-                '''
-                This function is used to define the position of the (0,0,0) cell in a global coordinate
-                system. From this the coordinates of all cells can be determined
-                '''
-                self.originCellCoordinates(x0, y0, z0);
-                return None;
+                #initialize only the interior parts
+                pmlX, pmlY, pmlZ = self.pmlCells
+                self.fldE[0, pmlX:-1-pmlX,1+pmlY:-1-pmlY,1+pmlZ:-1-pmlZ] = np.random.randn(self.Nx, self.Ny - 1, self.Nz - 1)
+                self.fldE[1, 1+pmlX:-1-pmlX,pmlY:-1-pmlY,1+pmlZ:-1-pmlZ] = np.random.randn(self.Nx - 1, self.Ny, self.Nz - 1)
+                self.fldE[2, 1+pmlX:-1-pmlX,1+pmlY:-1-pmlY,pmlZ:-1-pmlZ] = np.random.randn(self.Nx - 1, self.Ny - 1, self.Nz)
+
+        def initE(self, initFunc):
+            # iterate over all interior cells of the mesh
+            for idxX in range(1,self.Nx):
+                for idxY in range(1,self.Ny):
+                    for idxZ in range(1, self.Nz):
+                        #update the X component of H
+                        self.fldE[:,idxX, idxY, idxZ] = initFunc( self.dx * (0.5 + idxX), self.dy * (0.5 + idxY), self.dz *(0.5+idxZ) )
+
+            # iterate over the boundary
+            for idxY in range(1,self.Ny):
+                for idxZ in range(1, self.Nz):
+                    self.fldE[:, 0, idxY, idxZ] = initFunc( self.dx * (0.5), self.dy * (0.5 + idxY), self.dz *(0.5+idxZ) )
+
+            for idxX in range(1,self.Nx):
+                for idxZ in range(1, self.Nz):
+                    self.fldE[:, idxX, 0, idxZ] = initFunc( self.dx * (0.5 + idxX), self.dy * (0.5 ), self.dz *(0.5+idxZ) )
+
+            for idxX in range(1,self.Nx):
+                for idxY in range(1, self.Ny):
+                    self.fldE[:, idxX, idxY, 0] = initFunc( self.dx * (0.5 + idxX), self.dy * (0.5 + idxY), self.dz *(0.5) )
+
         def updateMatlabStyle(self, eps:float, mu:float, dt:float, cellDim:tuple):
             dx, dy, dz = cellDim
             self.fldH[0, :,:-1,:-1] = self.fldH[0,:,:-1,:-1] + (dt/mu)*(np.diff(self.fldE[1,:,:-1,:],axis=2)/dz - np.diff(self.fldE[2,:,:,:-1],axis=1)/dy);
@@ -163,11 +182,15 @@ class UnifiedYeeGrid:
             self.fldE[1, 1:-1,:-1,1:-1] = self.fldE[1,1:-1,:-1,1:-1] + (dt /eps) * (np.diff(self.fldH[0,1:-1,:-1,:-1],axis=2)/dz - np.diff(self.fldH[2,:-1,:-1,1:-1],axis=0)/dx);
             self.fldE[2, 1:-1,1:-1,:-1] = self.fldE[2,1:-1,1:-1,:-1] + (dt /eps) * (np.diff(self.fldH[1,:-1,1:-1,:-1],axis=0)/dx - np.diff(self.fldH[0,1:-1,:-1,:-1],axis=1)/dy);
 
-        def updateOwn(self, eps:float, mu:float, dt:float, cellDim:tuple):
+        def updateOwn(self, eps:float, mu:float, dt:float, cellDim:tuple = None):
             '''
             Function used to update the fields
             '''
-            dx, dy,dz = cellDim
+            if cellDim is not None:
+                dx ,dy ,dz = cellDim
+            else:
+                dx, dy,dz = (self.dx, self.dy, self.dz)
+
             #First we update the magnetic field
             # X component
             for idxX in range(self.Nx_virt):
