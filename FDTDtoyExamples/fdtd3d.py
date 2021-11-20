@@ -122,13 +122,13 @@ class UnifiedYeeGrid:
                 self.fldE = np.zeros( (3, self.Nx_virt, self.Ny_virt, self.Nz_virt) )
                 self.fldH = np.zeros( (3, self.Nx_virt, self.Ny_virt, self.Nz_virt) )
                 # Create the separate coefficient grid for PMLs
-                self.CoeffC = np.zeros( (3, 2*pmlCells[0] + pmlCells[0] )
+                self.CoeffC = np.zeros( (3, 2*pmlCells[0] + pmlCells[0] ) )
                 # Define the coordinates of the (0,0,0) cell
                 # implicitly we assme that the box extends in z direction with its xy-face
                 # being located at z=0
                 self.dx, self.dy, self.dz = cellDim
                 # Create the auxiliary arrays to store the PML constants
-                self.originCellCoordinates = (-self.dx * self.Nx/2, -self.dy * self.Ny / 2,0.)
+                self.originCellCoordinates = (-self.dx * self.Nx/2, -self.dy * self.Ny / 2, -self.dz * self.Nz / 2)
         def setCellOrigin( x0, y0, z0  ):
                 self.originCellCoordinates = (x0, y0, z0);
 
@@ -157,20 +157,20 @@ class UnifiedYeeGrid:
                 for idxY in range(1,self.Ny):
                     for idxZ in range(1, self.Nz):
                         #update the X component of H
-                        self.fldE[:,idxX, idxY, idxZ] = initFunc( self.dx * (0.5 + idxX), self.dy * (0.5 + idxY), self.dz *(0.5+idxZ) )
+                        self.fldE[:,idxX, idxY, idxZ] = initFunc( self.dx * (0.5 + idxX) + self.originCellCoordinates[0], self.dy * (0.5 + idxY)+ self.originCellCoordinates[1], self.dz *(0.5+idxZ)+ self.originCellCoordinates[2] )
 
             # iterate over the boundary
             for idxY in range(1,self.Ny):
                 for idxZ in range(1, self.Nz):
-                    self.fldE[:, 0, idxY, idxZ] = initFunc( self.dx * (0.5), self.dy * (0.5 + idxY), self.dz *(0.5+idxZ) )
+                    self.fldE[:, 0, idxY, idxZ] = initFunc( self.dx * (0.5)+ self.originCellCoordinates[0], self.dy * (0.5 + idxY)+ self.originCellCoordinates[1], self.dz *(0.5+idxZ)+ self.originCellCoordinates[2] )
 
             for idxX in range(1,self.Nx):
                 for idxZ in range(1, self.Nz):
-                    self.fldE[:, idxX, 0, idxZ] = initFunc( self.dx * (0.5 + idxX), self.dy * (0.5 ), self.dz *(0.5+idxZ) )
+                    self.fldE[:, idxX, 0, idxZ] = initFunc( self.dx * (0.5 + idxX)+ self.originCellCoordinates[0], self.dy * (0.5 )+ self.originCellCoordinates[1], self.dz *(0.5+idxZ) + self.originCellCoordinates[2])
 
             for idxX in range(1,self.Nx):
                 for idxY in range(1, self.Ny):
-                    self.fldE[:, idxX, idxY, 0] = initFunc( self.dx * (0.5 + idxX), self.dy * (0.5 + idxY), self.dz *(0.5) )
+                    self.fldE[:, idxX, idxY, 0] = initFunc( self.dx * (0.5 + idxX)+ self.originCellCoordinates[0], self.dy * (0.5 + idxY)+ self.originCellCoordinates[1], self.dz *(0.5) + self.originCellCoordinates[2])
 
         def updateMatlabStyle(self, eps:float, mu:float, dt:float, cellDim:tuple):
             dx, dy, dz = cellDim
