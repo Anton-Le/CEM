@@ -122,6 +122,8 @@ class UnifiedYeeGrid:
                 self.fldE = np.zeros( (3, self.Nx_virt, self.Ny_virt, self.Nz_virt) )
                 self.fldH = np.zeros( (3, self.Nx_virt, self.Ny_virt, self.Nz_virt) )
                 # Create the separate coefficient grid for PMLs
+                # Said grid consists of 2*pmlNx * 2*pmlNy * 2*pmlNz cells for the 8 corners,
+                # 
                 self.CoeffC = np.zeros( (3, 2*pmlCells[0] + pmlCells[0] ) )
                 # Define the coordinates of the (0,0,0) cell
                 # implicitly we assme that the box extends in z direction with its xy-face
@@ -152,25 +154,49 @@ class UnifiedYeeGrid:
                 self.fldE[2, 1+pmlX:-1-pmlX,1+pmlY:-1-pmlY,pmlZ:-1-pmlZ] = np.random.randn(self.Nx - 1, self.Ny - 1, self.Nz)
 
         def initE(self, initFunc):
-            # iterate over all interior cells of the mesh
-            for idxX in range(1,self.Nx):
-                for idxY in range(1,self.Ny):
-                    for idxZ in range(1, self.Nz):
-                        #update the X component of H
-                        self.fldE[:,idxX, idxY, idxZ] = initFunc( self.dx * (0.5 + idxX) + self.originCellCoordinates[0], self.dy * (0.5 + idxY)+ self.originCellCoordinates[1], self.dz *(0.5+idxZ)+ self.originCellCoordinates[2] )
-
-            # iterate over the boundary
-            for idxY in range(1,self.Ny):
-                for idxZ in range(1, self.Nz):
-                    self.fldE[:, 0, idxY, idxZ] = initFunc( self.dx * (0.5)+ self.originCellCoordinates[0], self.dy * (0.5 + idxY)+ self.originCellCoordinates[1], self.dz *(0.5+idxZ)+ self.originCellCoordinates[2] )
-
-            for idxX in range(1,self.Nx):
-                for idxZ in range(1, self.Nz):
-                    self.fldE[:, idxX, 0, idxZ] = initFunc( self.dx * (0.5 + idxX)+ self.originCellCoordinates[0], self.dy * (0.5 )+ self.originCellCoordinates[1], self.dz *(0.5+idxZ) + self.originCellCoordinates[2])
-
-            for idxX in range(1,self.Nx):
+            '''
+            The function initializes the internal electric field array using a user-provided function `initFunc` which takes 
+            physical coordinates (x,y,z) as arguments and reutrns the electric field vector at the given position.
+            **NOTE**: Due to the shifted nature of the components.
+            x component: [1:-1, 1:-1, 1:-1] + [0, 1:-1, 1:-1]
+            y component: [1:-1, 1:-1, 1:-1] + [1:-1, 0, 1:-1]
+            z component: [1:-1, 1:-1, 1:-1] + [1:-1, 1:-1, 0]
+            '''
+            # Array centre
+            for idxX in range(1, self.Nx):
                 for idxY in range(1, self.Ny):
-                    self.fldE[:, idxX, idxY, 0] = initFunc( self.dx * (0.5 + idxX)+ self.originCellCoordinates[0], self.dy * (0.5 + idxY)+ self.originCellCoordinates[1], self.dz *(0.5) + self.originCellCoordinates[2])
+                    for idxZ in range(1, self.Nz):
+                        # x component
+                        fldValueX = initFunc(self.originCellCoordinates[0] + self.dx * (idxX + 0.5),
+                                            self.originCellCoordinates[1] + self.dy * idxY,
+                                            self.originCellCoordinates[2] + self.dz * idxZ )
+                        # y component
+                        fldValueY = initFunc(self.originCellCoordinates[0] + self.dx * idxX,
+                                            self.originCellCoordinates[1] + self.dy * (idxY + 0.5),
+                                            self.originCellCoordinates[2] + self.dz * idxZ)
+                        # z component
+                        fldValueZ = initFunc(self.originCellCoordinates[0] + self.dx * idxX,
+                                            self.originCellCoordinates[1] + self.dy * idxY,
+                                            self.originCellCoordinates[2] + self.dz * (idxZ+0.5) )
+                        self.fldE[:,idxX, idxY, idxZ] = np.array( [fldValueX[0], fldValueY[1], fldValueZ[2]] )
+                        
+            # iterate over the boundaries
+            for idxY in range(1, self.Ny):
+                for idxZ in range(1, self.Nz):
+                    self.fldE[0, 0, idxY, idxZ] = initFunc(self.dx * 0.5 + self.originCellCoordinates[0],
+                                                           self.dy * (0.5 + idxY)+ self.originCellCoordinates[1],
+                                                           self.dz *(0.5 + idxZ)+ self.originCellCoordinates[2])[0]
+            # 
+            for idxX in range(1, self.Nx):
+                for idxZ in range(1, self.Nz):
+                    self.fldE[1, idxX, 0, idxZ] = initFunc(self.dx * (0.5 + idxX) + self.originCellCoordinates[0],
+                                                           self.dy * 0.5+ self.originCellCoordinates[1],
+                                                           self.dz *(0.5+idxZ) + self.originCellCoordinates[2])[1]
+            for idxX in range(1, self.Nx):
+                for idxY in range(1, self.Ny):
+                    self.fldE[2, idxX, idxY, 0] = initFunc(self.dx * (0.5 + idxX) + self.originCellCoordinates[0],
+                                                           self.dy * (0.5 + idxY)+ self.originCellCoordinates[1],
+                                                           self.dz * 0.5 + self.originCellCoordinates[2])[2]
 
         def updateMatlabStyle(self, eps:float, mu:float, dt:float, cellDim:tuple):
             dx, dy, dz = cellDim
